@@ -48,9 +48,9 @@ PR -> GitHub Actions CI -> merge -> closes issue
   success rate, throughput, cost, triage dismissals) plus Devin's own org-level analytics joined
   in, returning clean `null`/`[]` on an empty store rather than fabricated zeros.
 - A live dashboard (`/`) polling both endpoints every 5s.
-- 55 orchestrator-level tests: HMAC accept/reject, dedup (both layers), session manager
+- 73 orchestrator-level tests: HMAC accept/reject, dedup (both layers), session manager
   idempotency/concurrency, poller lifecycle (CI states, message dedup, merge idempotency,
-  escalation triggers, terminal resolution ordering), metrics.
+  escalation triggers, terminal resolution ordering), metrics, demo seed script.
 - Verified live end-to-end (not just unit tests) against the real Superset fork: issue labeled ->
   webhook -> session created -> PR opened -> CI -> outcome, tags visible in the Devin dashboard.
 
