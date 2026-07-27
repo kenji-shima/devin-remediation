@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devin Remediation — Dashboard</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e4e7ec;
+    --text: #12151a;
+    --text-dim: #6b7280;
+    --text-faint: #9aa1ab;
+    --accent: #2f6fed;
+    --accent-tint: #2f6fed1a;
+    --pass: #16a34a;
+    --pending: #d97706;
+    --fail: #dc2626;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: var(--font);
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 3rem;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.35rem;
+  }
+  h1 { font-size: 1.3rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+  .live {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--pass);
+    white-space: nowrap;
+  }
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pass);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-dot { animation: none; }
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .tile { padding: 0.9rem 1rem; }
+  .tile .label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .tile .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .tile .value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-top: 0.3rem;
+    line-height: 1;
+  }
+
+  /* Primary tier: the numbers that answer "is this working" -- given more
+     visual weight so they read first, instead of competing equally with
+     supporting/operational metrics. */
+  .tiles-primary { margin-bottom: 1.5rem; }
+  .tiles-primary .tile { padding: 1.15rem 1.25rem; border-top: 3px solid var(--tile-accent, var(--border)); }
+  .tiles-primary .tile .label { font-size: 0.76rem; }
+  .tiles-primary .tile .value { font-size: 2.1rem; }
+
+  .tiles-secondary { margin-bottom: 1.5rem; }
+  .tiles-secondary .tile .value { font-size: 1.25rem; color: var(--text-dim); }
+
+  .section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 0.6rem;
+  }
+
+  .chart-card { padding: 1.1rem 1.1rem 0.9rem; margin-bottom: 1.5rem; }
+  .chart-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.5rem;
+  }
+  .chart-head .total { font-size: 0.8rem; color: var(--pass); font-weight: 600; }
+  #chart { width: 100%; height: 180px; display: block; }
+  .chart-axis { font-size: 0.68rem; fill: var(--text-faint); font-family: var(--font); }
+
+  .tasks-card { padding: 1.1rem; margin-bottom: 1.5rem; }
+  .tasks-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .tasks-table th {
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 0 0.5rem 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tasks-table td {
+    padding: 0.55rem 0.5rem 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .tasks-table tr:last-child td { border-bottom: none; }
+  .tasks-table .issue-num { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .tasks-table .status-cell { display: flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
+  .tasks-table .status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-faint); }
+  .tasks-table .acu-cell { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .tasks-table a { color: var(--accent); text-decoration: none; }
+  .tasks-table a:hover { text-decoration: underline; }
+  .tasks-empty { color: var(--text-faint); font-size: 0.85rem; }
+
+  .status { font-size: 0.75rem; color: var(--text-faint); }
+  .status.error { color: var(--fail); }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (max-width: 480px) {
+    .tile .value { font-size: 1.3rem; }
+  }
+</style>
+</head>
+<body>
+
+  <header>
+    <h1>Devin Remediation — Dashboard</h1>
+    <div class="live"><span class="live-dot"></span>Live</div>
+  </header>
+  <div class="subtitle" id="subtitle">connecting…</div>
+
+  <div class="tiles tiles-primary" id="tiles-primary"></div>
+  <div class="tiles tiles-secondary" id="tiles-secondary"></div>
+
+  <div class="card tasks-card">
+    <div class="section-title">Active &amp; completed tasks</div>
+    <table class="tasks-table" id="tasks-table" hidden>
+      <thead><tr><th>Issue</th><th>Status</th><th>ACU</th><th>PR</th></tr></thead>
+      <tbody id="tasks-rows"></tbody>
+    </table>
+    <div class="tasks-empty" id="tasks-empty">No issues labeled for remediation yet.</div>
+  </div>
+
+  <div class="card chart-card">
+    <div class="chart-head">
+      <div class="section-title" style="margin-bottom:0">Merged PRs — last 30 days</div>
+      <div class="total" id="chart-total"></div>
+    </div>
+    <svg id="chart" viewBox="0 0 760 180" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="status" id="status">connecting…</div>
+
+<script>
+// Primary tier: the numbers that most directly answer "is this working" for
+// a leader glancing at the page -- given the biggest type and a colored top
+// edge so they read before anything else on the page.
+const TILE_DEFS_PRIMARY = [
+  ["Merge rate", "merge_rate", (v) => (v * 100).toFixed(0) + "%", "pass"],
+  ["Success rate", "success_rate", (v) => (v * 100).toFixed(0) + "%", "pass"],
+  ["MTTR", "mttr_hours", (v) => v.toFixed(1) + "h", "accent"],
+];
+
+// Secondary tier: supporting operational detail -- real, but not what
+// someone should read first.
+const TILE_DEFS_SECONDARY = [
+  ["Throughput", "throughput_per_day", (v) => (v * 7).toFixed(1) + "/wk", null],
+  // Cost per merged fix is the number a leader can actually reason about;
+  // raw total ACU is shown only as a fallback before anything has merged.
+  ["Cost", "cost_acu", (v, data) => data.cost_per_fix_acu !== null
+    ? data.cost_per_fix_acu.toFixed(1) + " ACU/fix"
+    : v !== null ? v.toFixed(1) + " ACU total" : "—", null, true],
+  ["Avg ACU / session", "avg_acu_per_session", (v) => v.toFixed(1), null],
+  // Correctly-diagnosed false positives, reported on their own -- never
+  // blended into success_rate above (see app/metrics.py::compute_success_rate).
+  ["Triage dismissals", "triage_dismissals", (v) => String(v), "pending"],
+];
+
+function fmt(value, formatter, data) {
+  return value === null || value === undefined ? "—" : formatter(value, data);
+}
+
+function renderTileRow(elementId, defs, data, { accentBorder = false } = {}) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = defs.map(([label, key, formatter, tone, raw]) => {
+    const style = accentBorder && tone ? ` style="--tile-accent: var(--${tone})"` : "";
+    const dot = !accentBorder && tone ? `<span class="dot" style="background:var(--${tone})"></span>` : "";
+    // raw: formatter decides its own null-handling (needs to look at more
+    // than one field on `data`, e.g. cost-per-fix falling back to total cost).
+    const display = raw ? formatter(data ? data[key] : null, data || {}) : fmt(data ? data[key] : null, formatter);
+    return `
+    <div class="card tile"${style}>
+      <div class="label">${dot}${label}</div>
+      <div class="value">${display}</div>
+    </div>
+  `;
+  }).join("");
+}
+
+function renderTiles(summary) {
+  renderTileRow("tiles-primary", TILE_DEFS_PRIMARY, summary, { accentBorder: true });
+  renderTileRow("tiles-secondary", TILE_DEFS_SECONDARY, summary);
+}
+
+function statusTone(status) {
+  if (status === "merged") return "pass";
+  if (status.startsWith("dismissed")) return "pending";
+  if (status.startsWith("escalated") || status === "blocked") return "fail";
+  if (status.includes("CI fail")) return "fail";
+  if (status.includes("CI pass")) return "pass";
+  if (status.includes("PR open")) return "pending";
+  return null;
+}
+
+function renderTasks(rows) {
+  const table = document.getElementById("tasks-table");
+  const empty = document.getElementById("tasks-empty");
+  const tbody = document.getElementById("tasks-rows");
+  if (!rows.length) {
+    table.hidden = true;
+    empty.hidden = false;
+    return;
+  }
+  table.hidden = false;
+  empty.hidden = true;
+  tbody.innerHTML = rows.map((r) => {
+    const tone = statusTone(r.status);
+    const dotStyle = tone ? ` style="background:var(--${tone})"` : "";
+    const pr = r.pr_url ? `<a href="${r.pr_url}" target="_blank" rel="noopener">PR ↗</a>` : "—";
+    const acu = r.acu_used === null || r.acu_used === undefined ? "—" : r.acu_used.toFixed(1);
+    return `
+    <tr>
+      <td><span class="issue-num">#${r.issue_number}</span> ${r.title}</td>
+      <td><span class="status-cell"><span class="status-dot"${dotStyle}></span>${r.status}</span></td>
+      <td class="acu-cell">${acu}</td>
+      <td>${pr}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderChart(points) {
+  const svg = document.getElementById("chart");
+  const totalEl = document.getElementById("chart-total");
+  const W = 760, H = 180, PAD_L = 28, PAD_B = 20, PAD_T = 10;
+  const plotW = W - PAD_L - 8;
+  const plotH = H - PAD_T - PAD_B;
+
+  if (!points.length) {
+    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" class="chart-axis" font-size="13">no merges yet</text>`;
+    totalEl.textContent = "";
+    return;
+  }
+
+  const total = points.reduce((sum, p) => sum + p.merged_count, 0);
+  totalEl.textContent = "+" + total + " total";
+
+  const max = Math.max(1, ...points.map((p) => p.merged_count));
+  const stepX = plotW / Math.max(1, points.length - 1);
+  const yFor = (v) => PAD_T + plotH - (v / max) * plotH;
+  const coords = points.map((p, i) => [PAD_L + i * stepX, yFor(p.merged_count)]);
+
+  const linePath = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${coords[coords.length - 1][0].toFixed(1)},${(PAD_T + plotH).toFixed(1)} ` +
+                    `L${coords[0][0].toFixed(1)},${(PAD_T + plotH).toFixed(1)} Z`;
+
+  // 0 and max always get labeled; the midpoint only gets one if it's a
+  // distinct value -- otherwise a small max (e.g. 1) would print the same
+  // rounded number at both the 50% and 100% lines.
+  const midValue = Math.round(max * 0.5);
+  const gridLines = [0, 0.5, 1].map((f) => {
+    const y = PAD_T + plotH * (1 - f);
+    const value = f === 0 ? 0 : f === 1 ? max : midValue;
+    const showLabel = f !== 0.5 || (midValue !== 0 && midValue !== max);
+    const label = showLabel ? `<text x="0" y="${y + 4}" class="chart-axis">${value}</text>` : "";
+    return `<line x1="${PAD_L}" y1="${y}" x2="${W}" y2="${y}" stroke="var(--border)" stroke-width="1" />${label}`;
+  }).join("");
+
+  const first = points[0].date.slice(5);
+  const last = points[points.length - 1].date.slice(5);
+  const mid = points[Math.floor(points.length / 2)].date.slice(5);
+
+  svg.innerHTML = `
+    ${gridLines}
+    <path d="${areaPath}" fill="var(--accent-tint)" stroke="none" />
+    <path d="${linePath}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+    <circle cx="${coords[coords.length - 1][0]}" cy="${coords[coords.length - 1][1]}" r="3.5" fill="var(--accent)" />
+    <text x="${PAD_L}" y="${H - 4}" class="chart-axis">${first}</text>
+    <text x="${W / 2}" y="${H - 4}" text-anchor="middle" class="chart-axis">${mid}</text>
+    <text x="${W - 8}" y="${H - 4}" text-anchor="end" class="chart-axis">${last}</text>
+  `;
+}
+
+async function refresh() {
+  const status = document.getElementById("status");
+  try {
+    const [summaryRes, seriesRes, sessionsRes] = await Promise.all([
+      fetch("/metrics/summary"),
+      fetch("/metrics/timeseries"),
+      fetch("/metrics/sessions"),
+    ]);
+    const summary = await summaryRes.json();
+    renderTiles(summary);
+    renderChart(await seriesRes.json());
+    renderTasks(await sessionsRes.json());
+    document.getElementById("subtitle").textContent =
+      `${summary.issues_opened} issues opened · ${summary.issues_merged} merged · ${summary.sessions_total} Devin sessions — updates every 5s`;
+    status.textContent = "updated " + new Date().toLocaleTimeString();
+    status.classList.remove("error");
+  } catch (e) {
+    status.textContent = "error fetching metrics — retrying";
+    status.classList.add("error");
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
