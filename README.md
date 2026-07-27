@@ -148,3 +148,11 @@ a real GitHub fork, not stub credentials.
   with a canned PR URL) so a reviewer can watch a webhook actually trigger a session end to end
   offline. Would also need the GitHub check-run/merge calls stubbed alongside it, since a fake PR
   URL can't be polled against the real API. Parked, not built.
+
+- **The review-fix loop was never exercised live.** `app/poller.py` implements it -- on CI-red it
+  messages the same Devin session with the failing checks, deduped by failure signature so an
+  unchanged failure never gets re-nagged -- and it's covered by `tests/test_poller.py` (CI-fail ->
+  message -> no re-send on an unchanged failure -> CI-pass -> merge). But every real issue this
+  system ran against Superset either merged clean on the first green CI or was dismissed as a false
+  positive before a PR ever opened, so the code path exists and is unit-tested, not demonstrated on
+  a real PR. Said here rather than implied by the demo.
