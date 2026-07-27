@@ -89,9 +89,20 @@ FastAPI's `TestClient`, so no tunnel is needed to run `pytest`.
 `docker compose up` boots cleanly with `DEVIN_API_KEY`/`GITHUB_TOKEN` left blank -- every setting in
 `app/config.py` has a default, so nothing crashes on missing credentials. The dashboard comes up at
 `/` and `/metrics/summary` returns real (empty) data: `null`s and `0`s from `app/metrics.py`, never
-fabricated numbers. Reviewers without a Devin key can see the actual system running, just with no
-sessions in it yet -- see [Known limitations](#known-limitations--parked-for-later) for the gap this
-doesn't cover (a full mocked webhook -> session -> merge loop).
+fabricated numbers.
+
+To see the dashboard actually populated without credentials, seed it with representative demo data
+(mirrors the categories this system really remediated -- a dependency CVE, bandit/semgrep/gitleaks
+findings, real and false-positive outcomes -- inserted straight into the datastore, no HTTP calls):
+
+```bash
+docker compose exec orchestrator python -m app.seed_demo
+```
+
+Refresh `/` and MTTR, merge rate, success rate, throughput, triage dismissals, and the merged-PRs
+chart are all populated -- real numbers, computed by the same `app/metrics.py` queries the live
+system uses. Only seeds an empty store (no-ops otherwise) and never touches Devin or GitHub. See
+[Known limitations](#known-limitations--parked-for-later) for what this doesn't cover.
 
 ## Schema & metrics
 
@@ -130,9 +141,10 @@ a real GitHub fork, not stub credentials.
   `dismissed`/`triaged`), so a human has to cross-reference the dashboard to tell "still open,
   untouched" apart from "still open, already triaged as a false positive." Parked, not built.
 
-- **No mocked Devin session for a full offline demo run.** The system boots and serves an empty
-  dashboard without a Devin key (see [Running without a Devin key](#running-without-a-devin-key)),
-  but there's no `DEVIN_MOCK`-style flag that fakes a session (`created -> running -> finished` with
-  a canned PR URL) so a reviewer without credentials can watch the *full* webhook -> session ->
-  merge loop populate the dashboard end to end. Would also need the GitHub check-run/merge calls
-  stubbed alongside it, since a fake PR URL can't be polled against the real API. Parked, not built.
+- **No mocked live webhook -> session -> merge loop.** `python -m app.seed_demo` (see
+  [Running without a Devin key](#running-without-a-devin-key)) covers the *observability* half --
+  a reviewer without credentials sees real, populated metrics -- but not the live event path itself.
+  There's no `DEVIN_MOCK`-style flag that fakes a running session (`created -> running -> finished`
+  with a canned PR URL) so a reviewer can watch a webhook actually trigger a session end to end
+  offline. Would also need the GitHub check-run/merge calls stubbed alongside it, since a fake PR
+  URL can't be polled against the real API. Parked, not built.
