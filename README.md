@@ -84,12 +84,14 @@ GitHub can't reach `localhost` directly -- use a tunnel (`ngrok http 8000` or
 `WEBHOOK_SECRET` as the repo's webhook. The test suite exercises the handler entirely through
 FastAPI's `TestClient`, so no tunnel is needed to run `pytest`.
 
-## Simulating the workflow without a Devin key
+## Running without a Devin key
 
-`app/devin_client.py` wraps the real Devin API and is what the running system uses. A
-`DEVIN_MOCK=true` env flag that swaps in canned session responses (created -> running -> finished
-with a fake PR URL), so reviewers without a Devin key can still see the full webhook -> session ->
-metrics loop end to end, is not built yet -- this section documents the intended seam.
+`docker compose up` boots cleanly with `DEVIN_API_KEY`/`GITHUB_TOKEN` left blank -- every setting in
+`app/config.py` has a default, so nothing crashes on missing credentials. The dashboard comes up at
+`/` and `/metrics/summary` returns real (empty) data: `null`s and `0`s from `app/metrics.py`, never
+fabricated numbers. Reviewers without a Devin key can see the actual system running, just with no
+sessions in it yet -- see [Known limitations](#known-limitations--parked-for-later) for the gap this
+doesn't cover (a full mocked webhook -> session -> merge loop).
 
 ## Schema & metrics
 
@@ -118,3 +120,19 @@ Metrics (`app/metrics.py`), all computed from `transitions`/`sessions`:
 See `.env.example`. All of `DEVIN_API_KEY`, `DEVIN_ORG_ID`, `GITHUB_TOKEN`, `GITHUB_REPO_OWNER`,
 and `GITHUB_REPO_NAME` are live and required -- the running system is wired to a real Devin org and
 a real GitHub fork, not stub credentials.
+
+## Known limitations / parked for later
+
+- **Dismissed issues aren't labeled for human close-out.** By design, a human closes the GitHub
+  issue when a Devin session resolves to `false_positive`/`blocked` -- the orchestrator never
+  closes issues itself (only a real merge's `Fixes #N` triggers GitHub's native auto-close). The
+  missing piece: Devin's dismissal isn't reflected back onto the issue with a label (e.g.
+  `dismissed`/`triaged`), so a human has to cross-reference the dashboard to tell "still open,
+  untouched" apart from "still open, already triaged as a false positive." Parked, not built.
+
+- **No mocked Devin session for a full offline demo run.** The system boots and serves an empty
+  dashboard without a Devin key (see [Running without a Devin key](#running-without-a-devin-key)),
+  but there's no `DEVIN_MOCK`-style flag that fakes a session (`created -> running -> finished` with
+  a canned PR URL) so a reviewer without credentials can watch the *full* webhook -> session ->
+  merge loop populate the dashboard end to end. Would also need the GitHub check-run/merge calls
+  stubbed alongside it, since a fake PR URL can't be polled against the real API. Parked, not built.

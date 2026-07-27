@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.devin_client import get_org_session_metrics, get_org_usage_metrics
+from app.devin_client import get_org_pr_metrics, get_org_session_metrics
 from app.models import DevinSession, Issue, Transition, utcnow
 from app.schemas import DevinOrgMetrics, MetricsSummary, SessionRow, TimeseriesPoint
 
@@ -207,26 +207,37 @@ def compute_session_rows(db: Session, issue_ids: set[int] | None = None) -> list
 
 
 async def fetch_devin_org_metrics(settings: Settings, window_days: int = 30) -> DevinOrgMetrics | None:
-    """Devin's own org-level analytics, joined alongside (not replacing) our
-    GitHub-derived business metrics. Returns None -- never raises -- if
-    credentials aren't configured or the call fails, so a Devin API hiccup
-    never breaks the dashboard.
+    """Devin's own org-level analytics, scoped to our playbook and joined
+    alongside (never replacing) our GitHub-derived business metrics. Returns
+    None -- never raises -- if credentials or a playbook aren't configured,
+    or the call fails, so a Devin API hiccup never breaks the dashboard.
+
+    Requires devin_playbook_id specifically (not just the API key/org id):
+    without it there is no verified-working way to scope this to just our
+    own sessions, and showing unscoped org-wide numbers would silently pick
+    up unrelated activity (see DevinOrgMetrics docstring).
     """
-    if not (settings.devin_api_key and settings.devin_org_id):
+    if not (settings.devin_api_key and settings.devin_org_id and settings.devin_playbook_id):
         return None
 
     now = int(datetime.now(timezone.utc).timestamp())
     window_start = now - window_days * 24 * 3600
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            usage = await get_org_usage_metrics(
-                org_id=settings.devin_org_id, api_key=settings.devin_api_key, client=client
-            )
             sessions = await get_org_session_metrics(
                 org_id=settings.devin_org_id,
                 api_key=settings.devin_api_key,
                 time_after=window_start,
                 time_before=now,
+                playbook_id=settings.devin_playbook_id,
+                client=client,
+            )
+            prs = await get_org_pr_metrics(
+                org_id=settings.devin_org_id,
+                api_key=settings.devin_api_key,
+                time_after=window_start,
+                time_before=now,
+                playbook_id=settings.devin_playbook_id,
                 client=client,
             )
     except httpx.HTTPError:
@@ -234,9 +245,10 @@ async def fetch_devin_org_metrics(settings: Settings, window_days: int = 30) -> 
         return None
 
     return DevinOrgMetrics(
-        sessions_count=usage.get("sessions_count", 0),
-        prs_created_count=usage.get("prs_created_count", 0),
-        prs_merged_count=usage.get("prs_merged_count", 0),
+        sessions_count=sessions.get("sessions_created_count", 0),
+        prs_created_count=prs.get("prs_created_count", 0),
+        prs_merged_count=prs.get("prs_merged_count", 0),
+        prs_closed_count=prs.get("prs_closed_count", 0),
         avg_acus_per_session=sessions.get("avg_acus_per_session", 0.0),
     )
 

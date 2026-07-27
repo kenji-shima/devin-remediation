@@ -34,10 +34,9 @@
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
-    margin-bottom: 0.35rem;
+    margin-bottom: 1.5rem;
   }
   h1 { font-size: 1.3rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
 
   .live {
     display: flex;
@@ -75,7 +74,10 @@
     gap: 0.75rem;
     margin-bottom: 0.75rem;
   }
-  .tile { padding: 0.9rem 1rem; }
+  /* flex column + margin-top: auto on .value pins the number to the tile's
+     bottom edge -- otherwise a label that wraps to two lines pushes its
+     value down relative to single-line labels in the same grid row. */
+  .tile { padding: 0.9rem 1rem; display: flex; flex-direction: column; }
   .tile .label {
     font-size: 0.72rem;
     font-weight: 600;
@@ -91,7 +93,8 @@
     font-size: 1.6rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    margin-top: 0.3rem;
+    margin-top: auto;
+    padding-top: 0.3rem;
     line-height: 1;
   }
 
@@ -105,6 +108,10 @@
 
   .tiles-secondary { margin-bottom: 1.5rem; }
   .tiles-secondary .tile .value { font-size: 1.25rem; color: var(--text-dim); }
+  /* Devin's own tiles sit in this same row -- unified with the business
+     tiles into one grid, distinguished only by a darker fill, not a
+     separate row/card/header. */
+  .tiles-secondary .tile.tile-devin .value { color: #f4f5f7; }
 
   .section-title {
     font-size: 0.85rem;
@@ -112,6 +119,19 @@
     color: var(--text-dim);
     margin-bottom: 0.6rem;
   }
+
+  .metrics-title { display: flex; justify-content: space-between; align-items: baseline; }
+  .metrics-legend {
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-faint);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .metrics-legend .swatch { width: 8px; height: 8px; border-radius: 2px; background: #262c38; flex: none; }
 
   .chart-card { padding: 1.1rem 1.1rem 0.9rem; margin-bottom: 1.5rem; }
   .chart-head {
@@ -150,6 +170,9 @@
   .tasks-table a:hover { text-decoration: underline; }
   .tasks-empty { color: var(--text-faint); font-size: 0.85rem; }
 
+  .tile-devin { background: #262c38; border-color: #262c38; }
+  .tile-devin .label { color: #9aa3b2; }
+
   .status { font-size: 0.75rem; color: var(--text-faint); }
   .status.error { color: var(--fail); }
 
@@ -166,8 +189,11 @@
     <h1>Devin Remediation — Dashboard</h1>
     <div class="live"><span class="live-dot"></span>Live</div>
   </header>
-  <div class="subtitle" id="subtitle">connecting…</div>
 
+  <div class="section-title metrics-title">
+    <span>Metrics</span>
+    <span class="metrics-legend" id="metrics-legend" hidden><span class="swatch"></span>From Devin</span>
+  </div>
   <div class="tiles tiles-primary" id="tiles-primary"></div>
   <div class="tiles tiles-secondary" id="tiles-secondary"></div>
 
@@ -201,44 +227,61 @@ const TILE_DEFS_PRIMARY = [
 ];
 
 // Secondary tier: supporting operational detail -- real, but not what
-// someone should read first.
+// someone should read first. Cost/Avg ACU per session live only in the Devin
+// tile row below now -- keeping both here too was showing the same number
+// twice once the two tiers sat in the same section.
 const TILE_DEFS_SECONDARY = [
   ["Throughput", "throughput_per_day", (v) => (v * 7).toFixed(1) + "/wk", null],
-  // Cost per merged fix is the number a leader can actually reason about;
-  // raw total ACU is shown only as a fallback before anything has merged.
-  ["Cost", "cost_acu", (v, data) => data.cost_per_fix_acu !== null
-    ? data.cost_per_fix_acu.toFixed(1) + " ACU/fix"
-    : v !== null ? v.toFixed(1) + " ACU total" : "—", null, true],
-  ["Avg ACU / session", "avg_acu_per_session", (v) => v.toFixed(1), null],
   // Correctly-diagnosed false positives, reported on their own -- never
   // blended into success_rate above (see app/metrics.py::compute_success_rate).
   ["Triage dismissals", "triage_dismissals", (v) => String(v), "pending"],
+];
+
+// Devin's own analytics, scoped by playbook_id (verified live to actually
+// filter -- unlike the tags filter on the sessions-list endpoint). A
+// cross-check panel, not the primary metrics -- see DevinOrgMetrics docstring.
+const DEVIN_TILE_DEFS = [
+  ["Devin Sessions", "sessions_count", (v) => String(v), null],
+  ["PRs merged", "prs_merged_count", (v) => String(v), "pass"],
+  ["PRs closed (unmerged)", "prs_closed_count", (v) => String(v), "pending"],
+  ["Avg ACU / session", "avg_acus_per_session", (v) => v.toFixed(2), null],
 ];
 
 function fmt(value, formatter, data) {
   return value === null || value === undefined ? "—" : formatter(value, data);
 }
 
-function renderTileRow(elementId, defs, data, { accentBorder = false } = {}) {
-  const el = document.getElementById(elementId);
-  el.innerHTML = defs.map(([label, key, formatter, tone, raw]) => {
-    const style = accentBorder && tone ? ` style="--tile-accent: var(--${tone})"` : "";
-    const dot = !accentBorder && tone ? `<span class="dot" style="background:var(--${tone})"></span>` : "";
-    // raw: formatter decides its own null-handling (needs to look at more
-    // than one field on `data`, e.g. cost-per-fix falling back to total cost).
-    const display = raw ? formatter(data ? data[key] : null, data || {}) : fmt(data ? data[key] : null, formatter);
-    return `
-    <div class="card tile"${style}>
+function tileHtml([label, key, formatter, tone, raw], data, { accentBorder = false, extraClass = "" } = {}) {
+  const style = accentBorder && tone ? ` style="--tile-accent: var(--${tone})"` : "";
+  const dot = !accentBorder && tone ? `<span class="dot" style="background:var(--${tone})"></span>` : "";
+  // raw: formatter decides its own null-handling (needs to look at more
+  // than one field on `data`, e.g. cost-per-fix falling back to total cost).
+  const display = raw ? formatter(data ? data[key] : null, data || {}) : fmt(data ? data[key] : null, formatter);
+  const classes = extraClass ? ` ${extraClass}` : "";
+  return `
+    <div class="card tile${classes}"${style}>
       <div class="label">${dot}${label}</div>
       <div class="value">${display}</div>
     </div>
   `;
-  }).join("");
+}
+
+function renderTileRow(elementId, defs, data, opts = {}) {
+  document.getElementById(elementId).innerHTML = defs.map((d) => tileHtml(d, data, opts)).join("");
 }
 
 function renderTiles(summary) {
   renderTileRow("tiles-primary", TILE_DEFS_PRIMARY, summary, { accentBorder: true });
-  renderTileRow("tiles-secondary", TILE_DEFS_SECONDARY, summary);
+
+  // Devin's tiles are appended into the same grid as the business secondary
+  // tiles -- one unified row, distinguished only by the dark tile-devin fill.
+  const devinMetrics = summary.devin_org_metrics;
+  const secondaryHtml = TILE_DEFS_SECONDARY.map((d) => tileHtml(d, summary)).join("");
+  const devinHtml = devinMetrics
+    ? DEVIN_TILE_DEFS.map((d) => tileHtml(d, devinMetrics, { extraClass: "tile-devin" })).join("")
+    : "";
+  document.getElementById("tiles-secondary").innerHTML = secondaryHtml + devinHtml;
+  document.getElementById("metrics-legend").hidden = !devinMetrics;
 }
 
 function statusTone(status) {
@@ -341,8 +384,6 @@ async function refresh() {
     renderTiles(summary);
     renderChart(await seriesRes.json());
     renderTasks(await sessionsRes.json());
-    document.getElementById("subtitle").textContent =
-      `${summary.issues_opened} issues opened · ${summary.issues_merged} merged · ${summary.sessions_total} Devin sessions — updates every 5s`;
     status.textContent = "updated " + new Date().toLocaleTimeString();
     status.classList.remove("error");
   } catch (e) {

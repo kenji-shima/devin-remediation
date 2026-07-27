@@ -2,20 +2,23 @@ from pydantic import BaseModel
 
 
 class DevinOrgMetrics(BaseModel):
-    """Devin's own org-level analytics (GET /v3/organizations/{org_id}/metrics/*).
-    None if Devin credentials aren't configured or the call fails.
+    """Devin's own org-level analytics (GET /v3/organizations/{org_id}/metrics/sessions
+    and .../metrics/prs), scoped by playbook_id -- verified live to actually
+    filter results, unlike the `tags` filter on the sessions-list endpoint
+    (documented but does not filter at all) or the /metrics/usage endpoint
+    (no filter parameters of any kind). None if Devin credentials or a
+    playbook aren't configured, or the call fails.
 
-    Not rendered on the dashboard: this endpoint has no working filter that
-    scopes it to just this system's sessions (confirmed live -- the `tags`
-    filter on the sessions-list endpoint is documented but does not actually
-    filter). Kept here, real and tested, for inspection via this API/at
-    /docs -- see avg_acu_per_session on MetricsSummary for the trustworthy,
-    self-scoped equivalent.
+    A secondary cross-check alongside the primary local metrics on
+    MetricsSummary, not a replacement -- Devin's API has no concept of a
+    GitHub issue's created_at, so it can never compute MTTR or the
+    false-positive/triage-dismissal distinction our own metrics do.
     """
 
     sessions_count: int
     prs_created_count: int
     prs_merged_count: int
+    prs_closed_count: int
     avg_acus_per_session: float
 
 
@@ -28,9 +31,9 @@ class MetricsSummary(BaseModel):
     # cost_acu / issues_merged -- None until at least one issue has merged,
     # since a cost-per-outcome number is meaningless with no outcomes yet.
     cost_per_fix_acu: float | None
-    # cost_acu / sessions_total -- computed from our own sessions rather than
-    # Devin's org-wide avg_acus_per_session, which can't be scoped to just
-    # this system's activity (see devin_org_metrics docstring).
+    # cost_acu / sessions_total -- our own primary source for this number.
+    # devin_org_metrics.avg_acus_per_session is Devin's independent
+    # cross-check on the same underlying activity, not the source of truth.
     avg_acu_per_session: float | None
     issues_opened: int
     issues_merged: int

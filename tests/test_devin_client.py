@@ -1,7 +1,14 @@
 import httpx
 import respx
 
-from app.devin_client import create_playbook, create_session, get_session, send_message
+from app.devin_client import (
+    create_playbook,
+    create_session,
+    get_org_pr_metrics,
+    get_org_session_metrics,
+    get_session,
+    send_message,
+)
 
 
 @respx.mock
@@ -121,6 +128,66 @@ async def test_get_session_builds_correct_request():
         result = await get_session(org_id="org-1", api_key="test-key", devin_session_id="devin-abc", client=client)
 
     assert result["status"] == "running"
+
+
+@respx.mock
+async def test_get_org_session_metrics_includes_playbook_id_when_given():
+    route = respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/sessions").mock(
+        return_value=httpx.Response(200, json={"sessions_created_count": 3, "avg_acus_per_session": 1.5})
+    )
+
+    async with httpx.AsyncClient() as client:
+        result = await get_org_session_metrics(
+            org_id="org-1",
+            api_key="test-key",
+            time_after=1000,
+            time_before=2000,
+            playbook_id="playbook-abc",
+            client=client,
+        )
+
+    request = route.calls.last.request
+    assert request.url.params["playbook_id"] == "playbook-abc"
+    assert request.url.params["time_after"] == "1000"
+    assert result["sessions_created_count"] == 3
+
+
+@respx.mock
+async def test_get_org_session_metrics_omits_playbook_id_when_not_given():
+    route = respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/sessions").mock(
+        return_value=httpx.Response(200, json={"sessions_created_count": 3})
+    )
+
+    async with httpx.AsyncClient() as client:
+        await get_org_session_metrics(
+            org_id="org-1", api_key="test-key", time_after=1000, time_before=2000, client=client
+        )
+
+    assert "playbook_id" not in route.calls.last.request.url.params
+
+
+@respx.mock
+async def test_get_org_pr_metrics_builds_correct_request():
+    route = respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/prs").mock(
+        return_value=httpx.Response(
+            200,
+            json={"prs_created_count": 2, "prs_opened_count": 0, "prs_merged_count": 1, "prs_closed_count": 1},
+        )
+    )
+
+    async with httpx.AsyncClient() as client:
+        result = await get_org_pr_metrics(
+            org_id="org-1",
+            api_key="test-key",
+            time_after=1000,
+            time_before=2000,
+            playbook_id="playbook-abc",
+            client=client,
+        )
+
+    assert route.calls.last.request.url.params["playbook_id"] == "playbook-abc"
+    assert result["prs_merged_count"] == 1
+    assert result["prs_closed_count"] == 1
 
 
 @respx.mock

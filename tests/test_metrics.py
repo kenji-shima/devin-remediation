@@ -148,16 +148,24 @@ def test_avg_acu_per_session_computation(client, db_session):
 def test_devin_org_metrics_included_when_configured(client, monkeypatch):
     monkeypatch.setenv("DEVIN_API_KEY", "test-key")
     monkeypatch.setenv("DEVIN_ORG_ID", "org-1")
+    monkeypatch.setenv("DEVIN_PLAYBOOK_ID", "playbook-abc")
     get_settings.cache_clear()
     try:
-        respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/usage").mock(
+        sessions_route = respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/sessions").mock(
             return_value=httpx.Response(
-                200,
-                json={"sessions_count": 5, "searches_count": 0, "prs_created_count": 4, "prs_merged_count": 3},
+                200, json={"sessions_created_count": 5, "avg_acus_per_session": 2.5}
             )
         )
-        respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/sessions").mock(
-            return_value=httpx.Response(200, json={"avg_acus_per_session": 2.5})
+        prs_route = respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/prs").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "prs_created_count": 4,
+                    "prs_opened_count": 0,
+                    "prs_merged_count": 3,
+                    "prs_closed_count": 1,
+                },
+            )
         )
 
         resp = client.get("/metrics/summary")
@@ -168,8 +176,27 @@ def test_devin_org_metrics_included_when_configured(client, monkeypatch):
             "sessions_count": 5,
             "prs_created_count": 4,
             "prs_merged_count": 3,
+            "prs_closed_count": 1,
             "avg_acus_per_session": 2.5,
         }
+        # Both calls must actually carry our playbook_id -- an unscoped call
+        # would silently pick up unrelated org activity (see fetch_devin_org_metrics).
+        assert sessions_route.calls.last.request.url.params["playbook_id"] == "playbook-abc"
+        assert prs_route.calls.last.request.url.params["playbook_id"] == "playbook-abc"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_devin_org_metrics_none_without_playbook_configured(client, monkeypatch):
+    """Even with API key + org id set, no playbook_id means no verified way
+    to scope the call -- must return None rather than show unscoped data."""
+    monkeypatch.setenv("DEVIN_API_KEY", "test-key")
+    monkeypatch.setenv("DEVIN_ORG_ID", "org-1")
+    monkeypatch.setenv("DEVIN_PLAYBOOK_ID", "")
+    get_settings.cache_clear()
+    try:
+        resp = client.get("/metrics/summary")
+        assert resp.json()["devin_org_metrics"] is None
     finally:
         get_settings.cache_clear()
 
@@ -317,9 +344,10 @@ def test_sessions_endpoint_pr_open_shows_ci_outcome(client, db_session):
 def test_devin_org_metrics_none_on_api_failure(client, monkeypatch):
     monkeypatch.setenv("DEVIN_API_KEY", "test-key")
     monkeypatch.setenv("DEVIN_ORG_ID", "org-1")
+    monkeypatch.setenv("DEVIN_PLAYBOOK_ID", "playbook-abc")
     get_settings.cache_clear()
     try:
-        respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/usage").mock(
+        respx.get("https://api.devin.ai/v3/organizations/org-1/metrics/sessions").mock(
             return_value=httpx.Response(403, json={"detail": "Unauthorized"})
         )
 
